@@ -38,6 +38,9 @@ details.fr>summary::-webkit-details-marker{display:none}
 .it{flex:1;min-width:0}
 .it b{font-weight:600}
 .item.done .it b{text-decoration:line-through;color:var(--mute)}
+.item.skip{opacity:.55}.item.skip .it b{font-style:italic;color:var(--mute)}
+.st.s3{border-style:dashed}
+.skipb{flex:none;align-self:center;background:transparent;border:1px solid var(--line);color:var(--mute);border-radius:8px;padding:6px 9px;font-size:12px;cursor:pointer}
 .meta{color:var(--mute);font-size:12px}
 .meta.re{color:var(--accent);font-weight:600}
 .tag{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:700;color:#fff;margin-right:4px}
@@ -100,7 +103,7 @@ details.fr>summary::-webkit-details-marker{display:none}
 
 <script>
 const CATS={anime:'Anime',games:'Games',movies:'Movies'};
-const ICON=['⬜','⏳','✅'];
+const ICON=['⬜','⏳','✅','⏭'];
 const uid=()=>Math.random().toString(36).slice(2,9);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let data={franchises:[]};
@@ -159,7 +162,7 @@ function merge(o){
   return n;
 }
 const all=f=>f.sections.flatMap(s=>s.items);
-function pct(items){return items.length?Math.round(items.filter(i=>i.status===2).length/items.length*100):0}
+function pct(items){const a=items.filter(i=>i.status!==3);return a.length?Math.round(a.filter(i=>i.status===2).length/a.length*100):0}
 
 const TYPES={anime:['Mainline','Spinoff','Movie','OVA','Special','Recap','Shorts'],games:['Mainline','Spinoff'],movies:['Mainline','Spinoff','Special','Shorts']};
 const TAGS=[['mainline','ml'],['remake','ml'],['spinoff','sp'],['movie','mv'],['film','mv'],['recap','rc'],['ova','ova'],['ona','ova'],['special','spc'],['short','sh']];
@@ -173,27 +176,30 @@ function render(){
   document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('on',b.dataset.c===tab));
   document.getElementById('legend').innerHTML=TYPES[tab].map(t=>badge(t)).join('');
   const items=data.franchises.flatMap(all);
-  document.getElementById('overall').textContent=items.length?`${items.filter(i=>i.status===2).length} of ${items.length} done overall (${pct(items)}%)`:'Nothing tracked yet';
+  document.getElementById('overall').textContent=items.length?`${items.filter(i=>i.status===2).length} of ${items.filter(i=>i.status!==3).length} done overall (${pct(items)}%)`:'Nothing tracked yet';
   const list=data.franchises.filter(f=>f.category===tab);
   const el=document.getElementById('list');
   if(!list.length){el.innerHTML=`<div class="empty">No ${CATS[tab].toLowerCase()} yet. Type a franchise above.</div>`;return}
   el.innerHTML=list.map(f=>{
-    const its=all(f),done=its.filter(i=>i.status===2).length,wip=its.filter(i=>i.status===1).length;
+    const its=all(f),done=its.filter(i=>i.status===2).length,wip=its.filter(i=>i.status===1).length,skipped=its.filter(i=>i.status===3).length,act=its.length-skipped;
     return `<details class="fr" data-id="${f.id}" ${open.has(f.id)?'open':''}>
-      <summary><div class="frhead"><span class="frname">${esc(f.name)}</span><span class="small">${done}/${its.length} · ${pct(its)}%</span></div>
+      <summary><div class="frhead"><span class="frname">${esc(f.name)}</span><span class="small">${done}/${act} · ${pct(its)}%</span></div>
       <div class="bar"><i style="width:${pct(its)}%"></i></div></summary>
       ${f.sections.map(s=>`<div class="sec">${esc(s.name)}</div>`+s.items.map(i=>`
-        <div class="item ${i.status===2?'done':''}">
+        <div class="item ${i.status===2?'done':i.status===3?'skip':''}">
           <button class="st s${i.status}" data-f="${f.id}" data-i="${i.id}">${ICON[i.status]}</button>
           <div class="it"><b>${esc(i.title)}</b><div class="meta">${badge(i.type)}${[i.year,i.length].filter(Boolean).map(esc).join(' · ')}</div>${i.notes?`<div class="meta ${/^(🔁|👥)/.test(i.notes)?'re':''}">${esc(i.notes)}</div>`:''}</div>
+          <button class="skipb" data-f="${f.id}" data-i="${i.id}">${i.status===3?'Undo skip':'Skip'}</button>
         </div>`).join('')).join('')}
-      <div class="foot"><span class="small">⏳ in progress: ${wip}</span><button class="del btn" data-del="${f.id}">Delete</button></div>
+      <div class="foot"><span class="small">⏳ in progress: ${wip}${skipped?` · ⏭ skipped: ${skipped}`:''}</span><button class="del btn" data-del="${f.id}">Delete</button></div>
     </details>`}).join('');
 }
 
 document.getElementById('list').addEventListener('click',e=>{
+  const sk=e.target.closest('.skipb');
+  if(sk){const f=data.franchises.find(x=>x.id===sk.dataset.f);const it=all(f).find(x=>x.id===sk.dataset.i);it.status=it.status===3?0:3;it.u=Date.now();save();render();return}
   const st=e.target.closest('.st');
-  if(st){const f=data.franchises.find(x=>x.id===st.dataset.f);const it=all(f).find(x=>x.id===st.dataset.i);it.status=(it.status+1)%3;it.u=Date.now();save();render();return}
+  if(st){const f=data.franchises.find(x=>x.id===st.dataset.f);const it=all(f).find(x=>x.id===st.dataset.i);it.status=it.status===3?0:(it.status+1)%3;it.u=Date.now();save();render();return}
   const d=e.target.closest('[data-del]');
   if(d){const f=data.franchises.find(x=>x.id===d.dataset.del);if(confirm('Delete "'+f.name+'"?')){data.franchises=data.franchises.filter(x=>x!==f);data.deleted=data.deleted||{};data.deleted[fkey(f)]=Date.now();save();render()}}
 });
@@ -336,7 +342,7 @@ function cleanRemote(r){
   if(!r||!Array.isArray(r.franchises))throw new Error('The cloud file is not readable, so I left it alone');
   const fr=r.franchises.filter(f=>f&&f.name&&CATS[f.category]&&Array.isArray(f.sections)).map(f=>({category:f.category,name:String(f.name),m:+f.m||0,
     sections:f.sections.filter(s=>s&&Array.isArray(s.items)).map(s=>({name:String(s.name||'Entries'),
-      items:s.items.filter(i=>i&&i.title).map(i=>({title:String(i.title),type:i.type||'',year:i.year||'',length:i.length||'',notes:i.notes||'',status:[0,1,2].includes(i.status)?i.status:0,u:+i.u||0}))}))}));
+      items:s.items.filter(i=>i&&i.title).map(i=>({title:String(i.title),type:i.type||'',year:i.year||'',length:i.length||'',notes:i.notes||'',status:[0,1,2,3].includes(i.status)?i.status:0,u:+i.u||0}))}))}));
   const del={};
   if(r.deleted&&typeof r.deleted==='object')for(const k in r.deleted)del[k]=+r.deleted[k]||0;
   return{franchises:fr,deleted:del};
